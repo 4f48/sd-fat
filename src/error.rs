@@ -4,6 +4,9 @@
 #[derive(Debug)]
 pub enum Error {
     OutOfBounds,
+    InvalidPartition,
+    ConversionError,
+    NoPartition,
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
