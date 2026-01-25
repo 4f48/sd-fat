@@ -1,0 +1,13 @@
+[package]
+name = "sd-fat"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+embedded-hal-async = "1.0.0"
+trait-variant = "0.1.2"
+
+[dev-dependencies]
+fastrand = "2.3.0"
+tokio = { version = "1.49.0", features = ["full"] }
