@@ -5,7 +5,7 @@
 
 pub mod block_device;
 pub mod error;
-pub mod fat32;
-pub mod structs;
+pub mod fs;
+pub mod part;
 
 pub use error::{Error, Result};

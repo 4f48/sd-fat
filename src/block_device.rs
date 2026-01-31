@@ -5,6 +5,6 @@ use crate::Result;
 
 #[trait_variant::make(Storage: Send)]
 pub trait BlockDevice {
-    async fn read(&self, i: u32, buf: &mut [u8; 512]) -> Result<()>;
+    async fn read(&mut self, i: u32, buf: &mut [u8; 512]) -> Result<()>;
     async fn write(&mut self, i: u32, buf: &[u8; 512]) -> Result<()>;
 }

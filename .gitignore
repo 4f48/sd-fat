@@ -1,2 +1,2 @@
 /target
-tests/fat32.img
+**/*.img

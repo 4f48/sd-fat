@@ -41,7 +41,7 @@ impl RamDisk {
 }
 
 impl BlockDevice for RamDisk {
-    async fn read(&self, i: u32, buf: &mut [u8; 512]) -> sd_fat::Result<()> {
+    async fn read(&mut self, i: u32, buf: &mut [u8; 512]) -> sd_fat::Result<()> {
         let block = self.blocks.get(i as usize).ok_or(Error::OutOfBounds)?;
         buf.copy_from_slice(block);
         Ok(())
