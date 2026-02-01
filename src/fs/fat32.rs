@@ -128,13 +128,33 @@ impl<BD: BlockDevice> FileSystem<BD> for Fat32<BD> {
             root_cluster: bpb.root_cluster,
         })
     }
-    fn open_dir(&mut self, cluster: u32) -> Self::Directory<'_> {
+    fn open_dir_at(&mut self, cluster: u32) -> Self::Directory<'_> {
         Fat32Dir {
             fs: self,
             cluster,
             cursor: cluster,
-            offset: 0,
         }
+    }
+    async fn open_dir(&mut self, path: &str) -> Result<Self::Directory<'_>> {
+        let mut dir = self.open_dir_at(self.root_cluster);
+
+        let path = path.trim_start_matches('/');
+
+        if path.is_empty() {
+            return Ok(dir);
+        }
+
+        for segment in path.split('/') {
+            let entry = dir.find(segment).await?;
+
+            if !entry.is_dir() {
+                return Err(Error::NotFound);
+            }
+
+            dir.cluster = entry.cluster;
+        }
+
+        Ok(dir)
     }
 }
 
@@ -142,66 +162,30 @@ pub struct Fat32Dir<'a, BD: BlockDevice> {
     fs: &'a mut Fat32<BD>,
     cluster: u32,
     cursor: u32,
-    offset: u32,
 }
 
 impl<'a, BD: BlockDevice> Dir for Fat32Dir<'a, BD> {
     type Entry = Fat32DirEntry;
 
-    fn info(&self) {
-        todo!();
-    }
-    async fn list(&mut self) -> Result<Vec<Self::Entry, 10>> {
+    async fn list(&mut self) -> Result<Vec<Self::Entry, 64>> {
         self.cursor = self.cluster;
 
         let mut results = Vec::new();
 
         let mut buf = [0u8; 512];
         'sectors: loop {
-            let start_sector = self.fs.first_data_sector
-                + ((self.cursor - 2) * self.fs.sectors_per_cluster as u32);
+            let start_sector = self.fs.get_sector(self.cursor);
 
             for i in 0..self.fs.sectors_per_cluster {
                 let sector = start_sector + i as u32;
                 self.fs.device.read(sector, &mut buf).await?;
 
                 for chunk in buf.chunks(32) {
-                    match chunk[0] {
-                        0x00 => break 'sectors, // End of Directory
-                        0xE5 => continue,       // Deleted file
-                        _ => (),
-                    }
-
-                    // TODO: Handle LFNs
-                    if chunk[11] == 0x0F {
-                        continue;
-                    }
-
-                    let mut name_str: String<12> = String::new();
-                    for i in 0..8 {
-                        let b = chunk[i];
-                        if b != 0x20 {
-                            name_str.push(b as char).map_err(|_| Error::CapacityError)?;
-                        }
-                    }
-                    if chunk[8] != 0x20 {
-                        name_str.push('.').map_err(|_| Error::CapacityError)?;
-                    }
-                    for i in 8..11 {
-                        let b = chunk[i];
-                        if b != 0x20 {
-                            name_str.push(b as char).map_err(|_| Error::CapacityError)?;
-                        }
-                    }
-
-                    let cluster_hi = u16::from_le_bytes(chunk[20..22].try_into().unwrap());
-                    let cluster_lo = u16::from_le_bytes(chunk[26..28].try_into().unwrap());
-
-                    let entry = Fat32DirEntry {
-                        name: name_str,
-                        is_dir: (chunk[11] & 0x10) != 0,
-                        size: u32::from_le_bytes(chunk[28..32].try_into().unwrap()),
-                        cluster: ((cluster_hi as u32) << 16) | (cluster_lo as u32),
+                    let entry = match Fat32DirEntry::parse(chunk) {
+                        Ok(Some(entry)) => entry,
+                        Ok(None) => continue,
+                        Err(Error::EndOfChain) => break 'sectors,
+                        Err(e) => return Err(e),
                     };
                     if let Err(_) = results.push(entry) {
                         return Ok(results);
@@ -217,6 +201,39 @@ impl<'a, BD: BlockDevice> Dir for Fat32Dir<'a, BD> {
 
         Ok(results)
     }
+
+    async fn find(&mut self, name: &str) -> Result<Self::Entry> {
+        self.cursor = self.cluster;
+
+        let mut buf = [0u8; 512];
+        'sectors: loop {
+            let start_sector = self.fs.get_sector(self.cursor);
+
+            for i in 0..self.fs.sectors_per_cluster {
+                let sector = start_sector + i as u32;
+                self.fs.device.read(sector, &mut buf).await?;
+
+                for chunk in buf.chunks(32) {
+                    let entry = match Fat32DirEntry::parse(chunk) {
+                        Ok(Some(entry)) => entry,
+                        Ok(None) => continue,
+                        Err(Error::EndOfChain) => break 'sectors,
+                        Err(e) => return Err(e),
+                    };
+                    if entry.name == name {
+                        return Ok(entry);
+                    }
+                }
+            }
+
+            match self.fs.next_cluster(self.cursor).await? {
+                Some(next) => self.cursor = next,
+                None => break 'sectors,
+            }
+        }
+
+        Err(Error::NotFound)
+    }
 }
 
 #[derive(Debug)]
@@ -227,11 +244,56 @@ pub struct Fat32DirEntry {
     cluster: u32,
 }
 
+impl Fat32DirEntry {
+    fn parse(chunk: &[u8]) -> Result<Option<Self>> {
+        match chunk[0] {
+            0x00 => return Err(Error::EndOfChain), // End of Directory
+            0xE5 => return Ok(None),               // Deleted file
+            _ => (),
+        }
+
+        // TODO: Handle LFNs
+        if chunk[11] == 0x0F {
+            return Ok(None);
+        }
+
+        let mut name_str: String<12> = String::new();
+        for i in 0..8 {
+            let b = chunk[i];
+            if b != 0x20 {
+                name_str.push(b as char).map_err(|_| Error::CapacityError)?;
+            }
+        }
+        if chunk[8] != 0x20 {
+            name_str.push('.').map_err(|_| Error::CapacityError)?;
+        }
+        for i in 8..11 {
+            let b = chunk[i];
+            if b != 0x20 {
+                name_str.push(b as char).map_err(|_| Error::CapacityError)?;
+            }
+        }
+
+        let cluster_hi = u16::from_le_bytes(chunk[20..22].try_into().unwrap());
+        let cluster_lo = u16::from_le_bytes(chunk[26..28].try_into().unwrap());
+
+        Ok(Some(Fat32DirEntry {
+            name: name_str,
+            is_dir: (chunk[11] & 0x10) != 0,
+            size: u32::from_le_bytes(chunk[28..32].try_into().unwrap()),
+            cluster: ((cluster_hi as u32) << 16) | (cluster_lo as u32),
+        }))
+    }
+}
+
 impl DirEntry for Fat32DirEntry {
     fn name(&self) -> &String<12> {
         &self.name
     }
     fn is_dir(&self) -> bool {
         self.is_dir
+    }
+    fn size(&self) -> u32 {
+        self.size
     }
 }

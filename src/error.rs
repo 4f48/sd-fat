@@ -10,6 +10,9 @@ pub enum Error {
     BadCluster(BadClusterVariant),
     ClusterFree,
     CapacityError,
+    NotFound,
+    EndOfChain,
+    FileDeleted,
 }
 
 #[derive(Debug)]
