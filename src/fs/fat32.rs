@@ -72,6 +72,7 @@ impl<D: BlockDevice> Fat32<D> {
         let offset = index * self.sectors_per_cluster as u32;
         self.first_data_sector + offset
     }
+
     async fn next_cluster(&mut self, cluster: u32) -> Result<Option<u32>> {
         let index = cluster * 4;
         let sector = self.first_fat_sector + (index / 512);
@@ -128,6 +129,7 @@ impl<BD: BlockDevice> FileSystem<BD> for Fat32<BD> {
             root_cluster: bpb.root_cluster,
         })
     }
+
     fn open_dir_at(&mut self, cluster: u32) -> Self::Directory<'_> {
         Fat32Dir {
             fs: self,
@@ -135,6 +137,7 @@ impl<BD: BlockDevice> FileSystem<BD> for Fat32<BD> {
             cursor: cluster,
         }
     }
+
     async fn open_dir(&mut self, path: &str) -> Result<Self::Directory<'_>> {
         let mut dir = self.open_dir_at(self.root_cluster);
 
@@ -187,7 +190,7 @@ impl<'a, BD: BlockDevice> Dir for Fat32Dir<'a, BD> {
                         Err(Error::EndOfChain) => break 'sectors,
                         Err(e) => return Err(e),
                     };
-                    if let Err(_) = results.push(entry) {
+                    if results.push(entry).is_err() {
                         return Ok(results);
                     };
                 }
@@ -258,19 +261,21 @@ impl Fat32DirEntry {
         }
 
         let mut name_str: String<12> = String::new();
-        for i in 0..8 {
-            let b = chunk[i];
-            if b != 0x20 {
-                name_str.push(b as char).map_err(|_| Error::CapacityError)?;
+        for b in chunk.iter().take(8) {
+            if *b != 0x20 {
+                name_str
+                    .push(*b as char)
+                    .map_err(|_| Error::CapacityError)?;
             }
         }
         if chunk[8] != 0x20 {
             name_str.push('.').map_err(|_| Error::CapacityError)?;
         }
-        for i in 8..11 {
-            let b = chunk[i];
-            if b != 0x20 {
-                name_str.push(b as char).map_err(|_| Error::CapacityError)?;
+        for b in chunk.iter().take(11).skip(8) {
+            if *b != 0x20 {
+                name_str
+                    .push(*b as char)
+                    .map_err(|_| Error::CapacityError)?;
             }
         }
 
@@ -290,9 +295,11 @@ impl DirEntry for Fat32DirEntry {
     fn name(&self) -> &String<12> {
         &self.name
     }
+
     fn is_dir(&self) -> bool {
         self.is_dir
     }
+
     fn size(&self) -> u32 {
         self.size
     }

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Olivér Pirger
+
 pub mod fat32;
 
 use crate::{Result, block_device::BlockDevice};
@@ -9,8 +12,14 @@ pub trait FileSystem<BD: BlockDevice>: Sized {
     where
         Self: 'a;
 
+    /// Mount the drive by parsing the partition table and
+    /// extracting essential information for executing file system operations.
     async fn mount(device: BD) -> Result<Self>;
+
+    /// Open a directory found at the specified sector on disk.
     fn open_dir_at(&mut self, sector: u32) -> Self::Directory<'_>;
+
+    /// Open a directory based on its path.
     async fn open_dir(&mut self, path: &str) -> Result<Self::Directory<'_>>;
 }
 
