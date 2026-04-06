@@ -4,6 +4,7 @@
 pub mod fat32;
 
 use crate::{Result, block_device::BlockDevice};
+use embedded_io_async::Read;
 use heapless::{String, Vec};
 
 #[allow(async_fn_in_trait)]
@@ -11,6 +12,10 @@ pub trait FileSystem<BD: BlockDevice>: Sized {
     type Directory<'a>: Dir
     where
         Self: 'a;
+
+    type File<'b>: Read
+    where
+        Self: 'b;
 
     /// Mount the drive by parsing the partition table and
     /// extracting essential information for executing file system operations.
@@ -21,6 +26,8 @@ pub trait FileSystem<BD: BlockDevice>: Sized {
 
     /// Open a directory based on its path.
     async fn open_dir(&mut self, path: &str) -> Result<Self::Directory<'_>>;
+
+    fn open_file_at(&mut self, cluster: u32, size: u32) -> Self::File<'_>;
 }
 
 #[allow(async_fn_in_trait)]
@@ -38,4 +45,5 @@ pub trait DirEntry: Sized {
     fn name(&self) -> &String<12>;
     fn is_dir(&self) -> bool;
     fn size(&self) -> u32;
+    fn cluster(&self) -> u32;
 }

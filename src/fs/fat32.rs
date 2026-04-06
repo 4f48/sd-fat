@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Olivér Pirger
 
+use embedded_io_async::{ErrorType, Read};
 use heapless::{String, Vec};
 
 use crate::{
     Error, Result,
     block_device::BlockDevice,
-    error::BadClusterVariant,
+    error::{self, BadClusterVariant},
     fs::{Dir, DirEntry, FileSystem},
     part::MasterBootRecord,
 };
@@ -86,7 +87,7 @@ impl<D: BlockDevice> Fat32<D> {
         match value {
             0x0000_0000 => Err(Error::BadCluster(BadClusterVariant::Free)),
             0x0000_0001 => Err(Error::BadCluster(BadClusterVariant::Reserved)),
-            0x0FFF_FFF8..0x0FFF_FFFF => Ok(None),
+            0x0FFF_FFF8..=0x0FFF_FFFF => Ok(None),
             _ => Ok(Some(value)),
         }
     }
@@ -97,6 +98,11 @@ impl<BD: BlockDevice> FileSystem<BD> for Fat32<BD> {
         = Fat32Dir<'a, BD>
     where
         Self: 'a;
+
+    type File<'b>
+        = Fat32File<'b, BD>
+    where
+        Self: 'b;
 
     async fn mount(mut device: BD) -> Result<Self> {
         let mut sector_0 = [0u8; 512];
@@ -159,6 +165,16 @@ impl<BD: BlockDevice> FileSystem<BD> for Fat32<BD> {
 
         Ok(dir)
     }
+
+    fn open_file_at(&mut self, cluster: u32, size: u32) -> Self::File<'_> {
+        Fat32File {
+            fs: self,
+            first: cluster,
+            cluster,
+            cursor: 0,
+            size,
+        }
+    }
 }
 
 pub struct Fat32Dir<'a, BD: BlockDevice> {
@@ -184,7 +200,7 @@ impl<'a, BD: BlockDevice> Dir for Fat32Dir<'a, BD> {
                 self.fs.device.read(sector, &mut buf).await?;
 
                 for chunk in buf.chunks(32) {
-                    let entry = match Fat32DirEntry::parse(chunk) {
+                    let mut entry = match Fat32DirEntry::parse(chunk) {
                         Ok(Some(entry)) => entry,
                         Ok(None) => continue,
                         Err(Error::EndOfChain) => break 'sectors,
@@ -217,7 +233,7 @@ impl<'a, BD: BlockDevice> Dir for Fat32Dir<'a, BD> {
                 self.fs.device.read(sector, &mut buf).await?;
 
                 for chunk in buf.chunks(32) {
-                    let entry = match Fat32DirEntry::parse(chunk) {
+                    let mut entry = match Fat32DirEntry::parse(chunk) {
                         Ok(Some(entry)) => entry,
                         Ok(None) => continue,
                         Err(Error::EndOfChain) => break 'sectors,
@@ -302,5 +318,58 @@ impl DirEntry for Fat32DirEntry {
 
     fn size(&self) -> u32 {
         self.size
+    }
+
+    fn cluster(&self) -> u32 {
+        self.cluster
+    }
+}
+
+pub struct Fat32File<'a, BD: BlockDevice> {
+    fs: &'a mut Fat32<BD>,
+    first: u32,
+    cluster: u32,
+    cursor: u32,
+    size: u32,
+}
+
+impl<'a, BD: BlockDevice> ErrorType for Fat32File<'a, BD> {
+    type Error = error::Error;
+}
+
+impl<'a, BD: BlockDevice> Read for Fat32File<'a, BD> {
+    async fn read(&mut self, buf: &mut [u8]) -> core::result::Result<usize, Self::Error> {
+        if self.cursor >= self.size || buf.is_empty() {
+            return Ok(0);
+        }
+
+        let cluster_offset = self.cursor % (512 * self.fs.sectors_per_cluster as u32);
+        let sector_offset = (cluster_offset % 512) as usize;
+
+        let mut sector = [0u8; 512];
+        self.fs
+            .device
+            .read(
+                self.fs.get_sector(self.cluster) + (cluster_offset / 512),
+                &mut sector,
+            )
+            .await?;
+
+        let n = buf
+            .len()
+            .min((512 - sector_offset) as usize)
+            .min((self.size - self.cursor) as usize);
+        buf[..n].copy_from_slice(&sector[sector_offset..sector_offset + n]);
+
+        self.cursor += n as u32;
+
+        if self.cursor % (512 * self.fs.sectors_per_cluster as u32) == 0 && self.cursor < self.size
+        {
+            if let Some(next) = self.fs.next_cluster(self.cluster).await? {
+                self.cluster = next;
+            };
+        }
+
+        Ok(n)
     }
 }
