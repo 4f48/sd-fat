@@ -17,6 +17,9 @@ pub enum Error {
     NotFound,
     EndOfChain,
     FileDeleted,
+    TransferError,
+    WriteError,
+    CsError,
 }
 
 impl fmt::Display for Error {
@@ -32,6 +35,9 @@ impl fmt::Display for Error {
             Error::NotFound => write!(f, "not found"),
             Error::EndOfChain => write!(f, "end of cluster chain"),
             Error::FileDeleted => write!(f, "file is deleted"),
+            Error::TransferError => write!(f, "transfer error"),
+            Error::WriteError => write!(f, "write error"),
+            Error::CsError => write!(f, "error setting chip select pin"),
         }
     }
 }
@@ -46,6 +52,7 @@ impl embedded_io_async::Error for Error {
             Error::InvalidPartition => ErrorKind::InvalidData,
             Error::ConversionError => ErrorKind::InvalidData,
             Error::BadCluster(_) => ErrorKind::InvalidData,
+            Error::ClusterFree => ErrorKind::InvalidData,
 
             Error::NoPartition => ErrorKind::NotFound,
             Error::NotFound => ErrorKind::NotFound,
@@ -54,8 +61,10 @@ impl embedded_io_async::Error for Error {
             Error::CapacityError => ErrorKind::OutOfMemory,
 
             Error::EndOfChain => ErrorKind::Other,
+            Error::TransferError => ErrorKind::Other,
+            Error::CsError => ErrorKind::Other,
 
-            Error::ClusterFree => ErrorKind::InvalidData,
+            Error::WriteError => ErrorKind::WriteZero,
         }
     }
 }
