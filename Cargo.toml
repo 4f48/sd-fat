@@ -1,8 +1,13 @@
 [package]
-name = "sd-fat"
+name = "polyfs"
 version = "0.1.0"
+authors = ["Olivér Pirger <oliver@pirger.eu>"]
 edition = "2024"
+description = "Minimal, extensible, no_std, no_alloc FAT32 file system driver for SD cards."
+repository = "https://github.com/4f48/sd-fat"
 license = "GPL-3.0-or-later"
+keywords = ["async", "fat32", "sdmmc"]
+categories = ["filesystem", "hardware-support", "asynchronous"]
 
 [dependencies]
 embedded-hal = "1.0.0"

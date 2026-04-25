@@ -3,7 +3,7 @@
 
 use std::{fs::File, io::Read};
 
-use sd_fat::{Error, block_device::BlockDevice};
+use polyfs::{Error, block_device::BlockDevice};
 
 pub struct RamDisk {
     blocks: Vec<[u8; 512]>,
@@ -41,12 +41,12 @@ impl RamDisk {
 }
 
 impl BlockDevice for RamDisk {
-    async fn read(&mut self, i: u32, buf: &mut [u8; 512]) -> sd_fat::Result<()> {
+    async fn read(&mut self, i: u32, buf: &mut [u8; 512]) -> polyfs::Result<()> {
         let block = self.blocks.get(i as usize).ok_or(Error::OutOfBounds)?;
         buf.copy_from_slice(block);
         Ok(())
     }
-    async fn write(&mut self, i: u32, buf: &[u8; 512]) -> sd_fat::Result<()> {
+    async fn write(&mut self, i: u32, buf: &[u8; 512]) -> polyfs::Result<()> {
         let block = self.blocks.get_mut(i as usize).ok_or(Error::OutOfBounds)?;
         block.copy_from_slice(buf);
         Ok(())

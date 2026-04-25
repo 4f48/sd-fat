@@ -7,7 +7,7 @@ mod common;
 mod tests {
     use super::*;
     use common::RamDisk;
-    use sd_fat::block_device::BlockDevice;
+    use polyfs::block_device::BlockDevice;
 
     #[tokio::test]
     async fn ramdisk_read_write() {

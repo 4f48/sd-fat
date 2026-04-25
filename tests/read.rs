@@ -8,9 +8,9 @@ mod tests {
     use super::*;
     use common::RamDisk;
     use embedded_io_async::Read;
-    use sd_fat::fs::File;
-    use sd_fat::fs::FileSystem;
-    use sd_fat::fs::fat32::Fat32;
+    use polyfs::fs::File;
+    use polyfs::fs::FileSystem;
+    use polyfs::fs::fat32::Fat32;
 
     #[tokio::test]
     async fn read_file() {

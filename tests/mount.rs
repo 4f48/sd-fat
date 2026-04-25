@@ -7,10 +7,10 @@ mod common;
 mod tests {
     use super::*;
     use common::RamDisk;
-    use sd_fat::fs::Dir;
-    use sd_fat::fs::File;
-    use sd_fat::fs::FileSystem;
-    use sd_fat::fs::fat32::Fat32;
+    use polyfs::fs::Dir;
+    use polyfs::fs::File;
+    use polyfs::fs::FileSystem;
+    use polyfs::fs::fat32::Fat32;
 
     #[tokio::test]
     async fn mount_fs() {
