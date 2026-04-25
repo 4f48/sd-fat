@@ -1,6 +1,6 @@
 [package]
 name = "polyfs"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Olivér Pirger <oliver@pirger.eu>"]
 edition = "2024"
 description = "Minimal, extensible, no_std, no_alloc FAT32 file system driver for SD cards."
