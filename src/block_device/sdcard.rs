@@ -14,6 +14,7 @@ pub struct SdCard<SPI: SpiBus, CS: OutputPin> {
 }
 
 /// Differentiate between byte-addressed (SDSC) and block-addressed (**SDHC**/SDXC) SD cards.
+#[allow(clippy::upper_case_acronyms)]
 enum SdCardType {
     /// SD Standard Capacity (SDSC) - max size 2 GB
     SDSC,

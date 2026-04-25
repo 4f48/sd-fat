@@ -12,6 +12,7 @@ use crate::{
     part::MasterBootRecord,
 };
 
+#[allow(dead_code)]
 struct BiosParameterBlock {
     /// BPB_BytsPerSec: Count of bytes per sector.
     /// This value may take on only the following values: 512, 1024, 2048 or 4096.
@@ -245,7 +246,7 @@ impl<'a, BD: BlockDevice> Dir for Fat32Dir<'a, BD> {
                 self.fs.device.read(sector, &mut buf).await?;
 
                 for chunk in buf.chunks(32) {
-                    let mut entry = match Fat32DirEntry::parse(chunk) {
+                    let entry = match Fat32DirEntry::parse(chunk) {
                         Ok(Some(entry)) => entry,
                         Ok(None) => continue,
                         Err(Error::EndOfChain) => break 'sectors,
@@ -278,7 +279,7 @@ impl<'a, BD: BlockDevice> Dir for Fat32Dir<'a, BD> {
                 self.fs.device.read(sector, &mut buf).await?;
 
                 for chunk in buf.chunks(32) {
-                    let mut entry = match Fat32DirEntry::parse(chunk) {
+                    let entry = match Fat32DirEntry::parse(chunk) {
                         Ok(Some(entry)) => entry,
                         Ok(None) => continue,
                         Err(Error::EndOfChain) => break 'sectors,
@@ -370,6 +371,7 @@ impl DirEntry for Fat32DirEntry {
     }
 }
 
+#[allow(dead_code)]
 pub struct Fat32File<'a, BD: BlockDevice> {
     fs: &'a mut Fat32<BD>,
     first: u32,
@@ -402,17 +404,19 @@ impl<'a, BD: BlockDevice> Read for Fat32File<'a, BD> {
 
         let n = buf
             .len()
-            .min((512 - sector_offset) as usize)
+            .min(512 - sector_offset)
             .min((self.size - self.cursor) as usize);
         buf[..n].copy_from_slice(&sector[sector_offset..sector_offset + n]);
 
         self.cursor += n as u32;
 
-        if self.cursor % (512 * self.fs.sectors_per_cluster as u32) == 0 && self.cursor < self.size
+        if self
+            .cursor
+            .is_multiple_of(512 * self.fs.sectors_per_cluster as u32)
+            && self.cursor < self.size
+            && let Some(next) = self.fs.next_cluster(self.cluster).await?
         {
-            if let Some(next) = self.fs.next_cluster(self.cluster).await? {
-                self.cluster = next;
-            };
+            self.cluster = next;
         }
 
         Ok(n)

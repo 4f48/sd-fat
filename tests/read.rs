@@ -8,8 +8,6 @@ mod tests {
     use super::*;
     use common::RamDisk;
     use embedded_io_async::Read;
-    use sd_fat::fs::Dir;
-    use sd_fat::fs::DirEntry;
     use sd_fat::fs::File;
     use sd_fat::fs::FileSystem;
     use sd_fat::fs::fat32::Fat32;
