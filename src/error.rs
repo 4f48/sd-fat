@@ -20,6 +20,8 @@ pub enum Error {
     TransferError,
     WriteError,
     CsError,
+    NotDirectory,
+    NotFile,
 }
 
 impl fmt::Display for Error {
@@ -38,6 +40,8 @@ impl fmt::Display for Error {
             Error::TransferError => write!(f, "transfer error"),
             Error::WriteError => write!(f, "write error"),
             Error::CsError => write!(f, "error setting chip select pin"),
+            Error::NotDirectory => write!(f, "not a directory"),
+            Error::NotFile => write!(f, "not a file"),
         }
     }
 }
@@ -53,6 +57,8 @@ impl embedded_io_async::Error for Error {
             Error::ConversionError => ErrorKind::InvalidData,
             Error::BadCluster(_) => ErrorKind::InvalidData,
             Error::ClusterFree => ErrorKind::InvalidData,
+            Error::NotDirectory => ErrorKind::InvalidData,
+            Error::NotFile => ErrorKind::InvalidData,
 
             Error::NoPartition => ErrorKind::NotFound,
             Error::NotFound => ErrorKind::NotFound,

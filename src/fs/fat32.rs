@@ -8,7 +8,7 @@ use crate::{
     Error, Result,
     block_device::BlockDevice,
     error::{self, BadClusterVariant},
-    fs::{Dir, DirEntry, FileSystem},
+    fs::{Dir, DirEntry, File, FileSystem},
     part::MasterBootRecord,
 };
 
@@ -93,6 +93,12 @@ impl<D: BlockDevice> Fat32<D> {
     }
 }
 
+impl<'a, BD: BlockDevice> File for Fat32File<'a, BD> {
+    fn size(&self) -> u32 {
+        self.size
+    }
+}
+
 impl<BD: BlockDevice> FileSystem<BD> for Fat32<BD> {
     type Directory<'a>
         = Fat32Dir<'a, BD>
@@ -174,6 +180,45 @@ impl<BD: BlockDevice> FileSystem<BD> for Fat32<BD> {
             cursor: 0,
             size,
         }
+    }
+
+    async fn open(
+        &mut self,
+        path: &str,
+    ) -> Result<super::Entry<Self::Directory<'_>, Self::File<'_>>> {
+        let path = path.trim_start_matches('/');
+        if path.is_empty() {
+            let root_dir = self.open_dir_at(self.root_cluster);
+            return Ok(super::Entry::Directory(root_dir));
+        }
+
+        let (segments, last) = match path.rfind('/') {
+            Some(i) => (&path[..i], &path[i + 1..]),
+            None => ("", path),
+        };
+
+        let (cluster, size, is_dir) = {
+            let mut dir = self.open_dir_at(self.root_cluster);
+
+            for segment in segments.split('/').filter(|s| !s.is_empty()) {
+                let entry = dir.find(segment).await?;
+                if !entry.is_dir() {
+                    return Err(Error::NotDirectory);
+                }
+                dir.cluster = entry.cluster;
+            }
+
+            let entry = dir.find(last).await?;
+            (entry.cluster(), entry.size(), entry.is_dir())
+        };
+
+        Ok(if is_dir {
+            let dir = self.open_dir_at(cluster);
+            super::Entry::Directory(dir)
+        } else {
+            let file = self.open_file_at(cluster, size);
+            super::Entry::File(file)
+        })
     }
 }
 

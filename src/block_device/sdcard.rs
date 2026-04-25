@@ -144,8 +144,63 @@ impl<SPI: SpiBus, CS: OutputPin> BlockDevice for SdCard<SPI, CS> {
         Ok(())
     }
 
-    async fn write(&mut self, _i: u32, _buf: &[u8; 512]) -> crate::Result<()> {
-        todo!();
+    async fn write(&mut self, i: u32, buf: &[u8; 512]) -> crate::Result<()> {
+        let address = match self.card_type {
+            SdCardType::SDHC => i,
+            SdCardType::SDSC => i * 512,
+        };
+
+        self.cs.set_low().map_err(|_| Error::CsError)?;
+        let cmd24 = make_cmd(24, address);
+        self.spi
+            .write(&cmd24)
+            .await
+            .map_err(|_| Error::WriteError)?;
+        let r1 = read_r1(&mut self.spi).await?;
+        if r1 != 0x00 {
+            deselect(&mut self.spi, &mut self.cs).await?;
+            return Err(Error::WriteError);
+        }
+
+        self.spi
+            .write(&[0xFF, 0xFE])
+            .await
+            .map_err(|_| Error::WriteError)?;
+        self.spi.write(buf).await.map_err(|_| Error::WriteError)?;
+        self.spi
+            .write(&[0xFF, 0xFF])
+            .await
+            .map_err(|_| Error::WriteError)?; // TODO: add CRC
+
+        let mut resp = [0xFF];
+        self.spi
+            .transfer_in_place(&mut resp)
+            .await
+            .map_err(|_| Error::TransferError)?;
+        if resp[0] & 0x1F != 0x05 {
+            deselect(&mut self.spi, &mut self.cs).await?;
+            return Err(Error::WriteError);
+        }
+
+        let mut attempts = 0u32;
+        loop {
+            let mut b = [0xFF];
+            self.spi
+                .transfer_in_place(&mut b)
+                .await
+                .map_err(|_| Error::TransferError)?;
+            if b[0] == 0xFF {
+                break;
+            }
+            attempts += 1;
+            if attempts > 100_000 {
+                deselect(&mut self.spi, &mut self.cs).await?;
+                return Err(Error::WriteError);
+            }
+        }
+
+        deselect(&mut self.spi, &mut self.cs).await?;
+        Ok(())
     }
 }
 
